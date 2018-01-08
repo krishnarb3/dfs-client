@@ -1,0 +1,25 @@
+{
+  "name": "dfs-client",
+  "version": "1.0.0",
+  "description": "Client application using electron for distributed file sharing",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "repository": "https://github.com/krishnarb3/dfs-client",
+  "keywords": [
+    "Electron",
+    "distibuted",
+    "file",
+    "sharing"
+  ],
+  "author": "krishnarb3",
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "electron": "~1.7.8"
+  },
+  "dependencies": {
+    "sockjs-client": "^1.1.4",
+    "vertx3-eventbus-client": "^3.5.0"
+  }
+}

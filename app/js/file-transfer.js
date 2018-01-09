@@ -5,6 +5,7 @@
  ****************************************************************************/
 let configuration = null;
 let EventBus = require('vertx3-eventbus-client/vertx-eventbus');
+let fs = require('fs');
 let eb = new EventBus('http://localhost:11123/eventbus');
 let roomURL = document.getElementById('url');
 
@@ -49,7 +50,7 @@ eb.onopen = function () {
  */
 function sendMessage(message) {
     console.log('Client sending message: ', message);
-    eb.send('message', message);
+    eb.publish('message', message);
 }
 
 //Updates URL on the page so that users can copy&paste it to their peers.
@@ -173,6 +174,7 @@ function receiveDataChromeFactory() {
         if (count === buf.byteLength) {
             // we're done: all data chunks have been received
             let received = new window.Blob(receivedBuffer);
+            saveBlobToFile(received);
             receivedBuffer = [];
             downloadAnchor.href = URL.createObjectURL(received);
             downloadAnchor.download = 'file';
@@ -264,4 +266,19 @@ function sendFile() {
         sliceFile(0);
     };
     fr.readAsArrayBuffer(file);
+}
+
+function saveBlobToFile(blob) {
+    let reader = new FileReader();
+    reader.onload = function(){
+        let buffer = new Buffer(reader.result);
+        fs.writeFile('temp', buffer, {}, (err, res) => {
+            if(err){
+                console.error(err);
+                return
+            }
+            console.log('file saved')
+        })
+    };
+    reader.readAsArrayBuffer(blob)
 }

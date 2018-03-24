@@ -6,8 +6,9 @@
 let configuration = null;
 let EventBus = require('vertx3-eventbus-client/vertx-eventbus');
 let fs = require('fs');
-let eb = new EventBus('http://localhost:11123/eventbus');
+let eb = new EventBus('http://192.168.43.221:11123/eventbus');
 let roomURL = document.getElementById('url');
+let inProgress = false;
 
 // Create a random room if not already present in the URL.
 let isInitiator = false;
@@ -20,30 +21,47 @@ if (!room) {
  * Signaling server
  ****************************************************************************/
 
-eb.onopen = function () {
-    console.log('Eventbus opened');
-    // eb.registerHandler('ipaddr', function (error, ipaddr) {
-    //     console.log(ipaddr);
-    // });
-    eb.registerHandler('created', function(error, clientId) {
-        console.log('Created room', room, '- my client ID is', clientId);
-        isInitiator = true;
-    });
-    eb.registerHandler('joined', function (error, clientId) {
-        console.log('This peer has joined room', room, 'with client ID', clientId);
-        if(!isInitiator) createPeerConnection(isInitiator, configuration);
-    });
-    eb.registerHandler('ready', function () {
-        console.log('Socket is ready');
-        createPeerConnection(isInitiator, configuration);
-    });
-    eb.registerHandler('message', function (error, message) {
-        console.log('Client received message:', message);
-        signalingMessageCallback(message.body);
-    });
-    eb.send('create or join', room);
-    // eb.send('ipaddr', 'ipaddr');
-};
+function initEventBus(room) {
+    console.log('Init event bus');
+    eb = new EventBus('http://127.0.0.1:11123/eventbus');
+    eb.onerror = function (err) {
+        console.log(err)
+    };
+    console.log(eb.state);
+    eb.onopen = function () {
+        console.log('Eventbus opened');
+
+        eb.registerHandler(room + '.created', function (error, clientId) {
+            if (!inProgress) {
+                console.log('Created room', room, '- my client ID is', clientId);
+                isInitiator = true;
+            }
+        });
+        eb.registerHandler(room + '.joined', function (error, clientId) {
+            if (!inProgress) {
+                console.log('This peer has joined room', room, 'with client ID', clientId);
+                if (!isInitiator) {
+                    createPeerConnection(isInitiator, configuration);
+                }
+            }
+        });
+        eb.registerHandler(room + '.ready', function () {
+            if (!inProgress) {
+                console.log('Socket is ready');
+                createPeerConnection(isInitiator, configuration);
+            }
+        });
+        eb.registerHandler('message', function (error, message) {
+            if (!inProgress) {
+                console.log('Client received message:', message);
+                signalingMessageCallback(message.body);
+            }
+        });
+        eb.send('create or join', room);
+        // eb.send('ipaddr', 'ipaddr');
+    };
+}
+initEventBus(room);
 
 /**
  * Send message to signaling server
@@ -51,17 +69,6 @@ eb.onopen = function () {
 function sendMessage(message) {
     console.log('Client sending message: ', message);
     eb.publish('message', message);
-}
-
-//Updates URL on the page so that users can copy&paste it to their peers.
-
-function updateRoomURL(ipaddr) {
-    let url;
-    if (!ipaddr) {
-        url = location.href;
-    } else {
-        url = location.protocol + '//' + ipaddr + ':2013/#' + room;
-    }
 }
 
 /****************************************************************************
@@ -143,13 +150,20 @@ function onDataChannelCreated(channel) {
     console.log('onDataChannelCreated:', channel);
 
     channel.onopen = function () {
+        inProgress = true;
         console.log('CHANNEL opened!!!');
+    };
+
+    channel.onclose = function() {
+        inProgress = false;
+        console.log('CHANNEL closed!!!');
     };
 
     channel.onmessage = (adapter.browserDetails.browser === 'firefox') ?
         receiveDataFirefoxFactory() : receiveDataChromeFactory();
 }
 
+let fileName = '';
 let receivedBuffer = [];
 let downloadAnchor = document.querySelector('a#download');
 
@@ -158,9 +172,13 @@ function receiveDataChromeFactory() {
 
     return function onmessage(event) {
         if (typeof event.data === 'string') {
-            buf = window.buf = new Uint8ClampedArray(parseInt(event.data));
-            count = 0;
-            console.log('Expecting a total of ' + buf.byteLength + ' bytes');
+            if(isNaN(event.data)) {
+                fileName = event.data;
+            } else {
+                buf = window.buf = new Uint8ClampedArray(parseInt(event.data));
+                count = 0;
+                console.log('Expecting a total of ' + buf.byteLength + ' bytes');
+            }
             return;
         }
         receivedBuffer.push(event.data);
@@ -247,6 +265,7 @@ function sendFile() {
         console.log(data);
         let len = data.byteLength, n = len / CHUNK_LEN | 0;
         console.log('Sending a total of ' + len + ' byte(s)');
+        dataChannel.send(file.name);
         dataChannel.send(len);
         let sliceFile = function (offset) {
             let reader = new window.FileReader();
@@ -272,13 +291,21 @@ function saveBlobToFile(blob) {
     let reader = new FileReader();
     reader.onload = function(){
         let buffer = new Buffer(reader.result);
-        fs.writeFile('temp', buffer, {}, (err, res) => {
+        fs.writeFile(fileName, buffer, {}, (err, res) => {
             if(err){
                 console.error(err);
                 return
             }
             console.log('file saved')
+            fileName = '';
         })
     };
     reader.readAsArrayBuffer(blob)
+}
+
+function joinRoomTemp() {
+    let roomToBeJoined = document.getElementById("roomInput").value;
+    isInitiator = false;
+    room = roomToBeJoined;
+    initEventBus(room);
 }
